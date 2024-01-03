@@ -1,0 +1,142 @@
+---
+title: "bench_progress"
+output: html_document
+date: "2024-01-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/Quinn/Documents/R_Projects/")
+df <- read.csv("bench_chart.csv")
+library(lubridate)
+library(ggplot2)
+
+df$Date <- lubridate::mdy(df$Date)
+
+head(df)
+
+
+```
+
+```{r echo = FALSE}
+library(ggplot2)
+library(zoo)
+library(scales)
+
+# Assuming 'df' is your data frame and it has a Date column of class Date
+# Ensure the Date column is a Date object
+df$Date <- as.Date(df$Date)
+
+# Create a new column for the average of the three variables
+df$Average = rowMeans(df[, c("Epley", "Brzycki", "Lombardi")])
+
+# Define the breaks for the x-axis
+start_date <- as.Date("2020-12-01") # Starting from December 2020
+end_date <- max(df$Date) # The maximum date in your dataset
+date_breaks <- seq(from = start_date, to = end_date, by = "4 months")
+
+# Now create the plot
+p <- ggplot(df, aes(x = Date)) +
+  geom_line(aes(y = Average), colour = "blue") + # Trendline for the average
+  scale_y_continuous(breaks = seq(0, 340, by = 20)) + # Y-axis increments of 20, up to 340
+  scale_x_date(breaks = date_breaks, labels = date_format("%b %Y")) + # X-axis every 4 months
+  theme_minimal() +
+    labs(title = "Bench Press 1RM Strength Estimates",
+         x = "Date",
+         y = "Estimated 1RM")
+
+# Print the plot
+print(p)
+
+```
+
+```{r include=FALSE}
+
+library(forecast)
+library(ggplot2)
+library(dplyr)
+library(tibble) # For easy conversion to data frame
+library(lubridate) # For handling date objects
+
+# Assuming the previous steps are done and forecast
+
+```
+
+```{r echo = FALSE}
+# Convert the data frame to a ts object (time series)
+df_ts <- df %>%
+  select(Date, Average) %>%
+  # Ensure Date is in Date format and in the correct order
+  arrange(Date) %>%
+  # Convert to a monthly time series starting from the first date in your data
+  mutate(month = as.yearmon(Date)) %>%
+  # Summarize to make sure there is one value per month
+  group_by(month) %>%
+  summarize(Average = mean(Average)) %>%
+  # Convert to a ts object
+  with(ts(Average, start=c(year(min(month)), month(min(month))), frequency=12))
+
+# Fit a model to the data, for example an Auto ARIMA model
+fit <- auto.arima(df_ts)
+
+# Forecast the next 12 months
+forecasted_values <- forecast(fit, h=12)
+
+# Plot the forecast
+plot(forecasted_values)
+
+```
+
+```{r echo = FALSE}
+library(forecast)
+library(dplyr)
+library(zoo)  # for as.yearmon()
+
+# Convert the data frame to a ts object (time series)
+df_ts <- df %>%
+  select(Date, Average) %>%
+  arrange(Date) %>%
+  mutate(month = as.yearmon(Date)) %>%
+  group_by(month) %>%
+  summarize(Average = mean(Average), .groups = 'drop') %>%
+  with(ts(Average, start=c(year(min(month)), month(min(month))%%12), frequency=12))
+
+# Fit a model to the data, for example an Auto ARIMA model
+fit <- auto.arima(df_ts)
+
+# Forecast the next 12 months
+forecasted_values <- forecast(fit, h=12)
+
+# Ensure forecasted mean values do not decrease below 330
+forecasted_values$mean <- pmax(forecasted_values$mean, 330)
+
+# Ensure the lower bounds of the 80% and 95% confidence intervals do not decrease below 330
+forecasted_values$lower[, "80%"] <- pmax(forecasted_values$lower[, "80%"], 330)
+forecasted_values$lower[, "95%"] <- pmax(forecasted_values$lower[, "95%"], 330)
+
+# Plot the forecast
+plot(forecasted_values)
+```
+
+```{r include = FALSE}
+library(reactable)
+library(reactablefmtr)
+```
+
+```{r}
+library(shiny)
+library(reactable)
+## Standard nytimes theme
+forecast_df_table <- forecast_df %>%
+  mutate_if(is.numeric, round, digits = 2)
+
+forecast_df_table <- forecast_df_table %>% 
+  select(-6)
+
+reactable(forecast_df_table,
+          defaultPageSize = 12,
+          theme = espn())
+
+```
+
+
